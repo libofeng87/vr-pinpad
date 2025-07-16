@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>VR PIN Pad Final</title>
+  <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+</head>
+<body>
+<a-scene>
+  <!-- 相机和 gaze -->
+  <a-entity camera look-controls>
+    <a-cursor fuse="true" fuse-timeout="2000" color="yellow"></a-cursor>
+  </a-entity>
+
+  <!-- ✅ 模式选择页面 -->
+  <a-entity id="modeSelection">
+    <!-- 按钮 -->
+    <a-box id="fixedBtn" position="-0.8 1.3 -2" width="0.8" height="0.3" depth="0.05" color="#66BB6A">
+      <a-text value="Fixed Layout" align="center" width="2" position="0 0 0.03" color="#fff"></a-text>
+    </a-box>
+    <a-box id="dynamicBtn" position="0.8 1.3 -2" width="0.8" height="0.3" depth="0.05" color="#EF5350">
+      <a-text value="Dynamic Layout" align="center" width="2" position="0 0 0.03" color="#fff"></a-text>
+    </a-box>
+    <!-- 标题放按钮下方 -->
+    <a-text id="mainTitle" value="Select Mode"
+            position="0 0.8 -1.95"
+            align="center" width="4" color="#000"></a-text>
+  </a-entity>
+
+  <!-- ✅ PIN pad 页面 -->
+  <a-entity id="pinpadSection" visible="false">
+    <a-text id="mode" value="" position="0 2.0 -2" align="center" color="red" width="3"></a-text>
+    <a-text id="status" value="PIN: " position="0 1.8 -2" align="center" color="#000" width="3"></a-text>
+    <a-entity id="pinpad"></a-entity>
+
+    <!-- ✅ Delete & Confirm（只改字体大小） -->
+    <a-box id="deleteBtn" position="-0.4 -0.5 -2"
+           width="0.4" height="0.2" depth="0.05" color="#FF9800">
+      <a-text value="Delete" position="0 0 0.03"
+               align="center" baseline="center" color="#fff" width="2"></a-text>
+    </a-box>
+    <a-box id="confirmBtn" position="0.4 -0.5 -2"
+           width="0.4" height="0.2" depth="0.05" color="#2196F3">
+      <a-text value="Confirm" position="0 0 0.03"
+               align="center" baseline="center" color="#fff" width="2"></a-text>
+    </a-box>
+  </a-entity>
+
+  <!-- ✅ YES/NO 弹窗 -->
+  <a-entity id="confirmPopup" visible="false">
+    <a-plane position="0 1.5 -2" width="2.5" height="1.5" color="#FFF" opacity="0.95"></a-plane>
+    <a-text value="Allow saving experiment log?"
+            position="0 1.8 -1.99" align="center" width="4" color="#000"></a-text>
+    <a-text id="popupMode" value="" position="0 1.65 -1.99" align="center" width="3" color="#000"></a-text>
+    <a-text id="popupTime" value="" position="0 1.5 -1.99" align="center" width="3" color="#000"></a-text>
+    <a-box id="yesBtn" position="-0.5 1.2 -2" width="0.5" height="0.25" depth="0.05" color="#4CAF50">
+      <a-text value="YES" position="0 0 0.03" align="center" color="#fff"></a-text>
+    </a-box>
+    <a-box id="noBtn" position="0.5 1.2 -2" width="0.5" height="0.25" depth="0.05" color="#F44336">
+      <a-text value="NO" position="0 0 0.03" align="center" color="#fff"></a-text>
+    </a-box>
+  </a-entity>
+
+  <!-- 地面和光源 -->
+  <a-plane rotation="-90 0 0" width="10" height="10" color="#EEE"></a-plane>
+  <a-light type="ambient" color="#fff"></a-light>
+</a-scene>
+
+<script>
+const positions = [
+  "-0.5 1 -2", "0 1 -2", "0.5 1 -2",
+  "-0.5 0.5 -2", "0 0.5 -2", "0.5 0.5 -2",
+  "-0.5 0 -2", "0 0 -2", "0.5 0 -2"
+];
+let isDynamic = false, inputPIN = '', startTime = 0, buttons = [];
+
+const mainTitle = document.getElementById('mainTitle');
+const modeSel = document.getElementById('modeSelection');
+const pinpadSection = document.getElementById('pinpadSection');
+const pinpad = document.getElementById('pinpad');
+const modeText = document.getElementById('mode');
+const status = document.getElementById('status');
+const confirmPopup = document.getElementById('confirmPopup');
+const yesBtn = document.getElementById('yesBtn');
+const noBtn = document.getElementById('noBtn');
+
+document.getElementById('fixedBtn').addEventListener('click', () => startPINPad(false));
+document.getElementById('dynamicBtn').addEventListener('click', () => startPINPad(true));
+addHoverEffect(document.getElementById('fixedBtn'), "#66BB6A", "#81C784");
+addHoverEffect(document.getElementById('dynamicBtn'), "#EF5350", "#E57373");
+addHoverEffect(yesBtn, "#4CAF50", "#81C784");
+addHoverEffect(noBtn, "#F44336", "#E57373");
+
+document.getElementById('deleteBtn').addEventListener('click', () => {
+  if (inputPIN.length > 0) {
+    inputPIN = inputPIN.slice(0, -1);
+    status.setAttribute('value', 'PIN: ' + inputPIN);
+  }
+});
+addHoverEffect(document.getElementById('deleteBtn'), "#FF9800", "#FFB74D");
+
+document.getElementById('confirmBtn').addEventListener('click', () => {
+  if (inputPIN.length < 4) {
+    alert('PIN must be 4 digits!');
+    return;
+  }
+  const elapsed = Date.now() - startTime;
+  showPopup(elapsed);
+});
+addHoverEffect(document.getElementById('confirmBtn'), "#2196F3", "#64B5F6");
+
+yesBtn.addEventListener('click', () => { closePopup(); });
+noBtn.addEventListener('click', () => { closePopup(); });
+
+function startPINPad(dynamic) {
+  isDynamic = dynamic;
+  modeText.setAttribute('value', `Mode: ${dynamic ? 'Dynamic' : 'Fixed'}`);
+  inputPIN = '';
+  mainTitle.setAttribute('visible', false);
+  modeSel.setAttribute('visible', false);
+  pinpadSection.setAttribute('visible', true);
+  status.setAttribute('value', 'PIN: ');
+  startTime = Date.now();
+  buildPINPad();
+}
+
+function buildPINPad() {
+  pinpad.innerHTML = '';
+  buttons = [];
+  let pos = isDynamic ? shuffleArray(positions.slice()) : positions;
+  for (let i = 0; i < 9; i++) {
+    const box = document.createElement('a-box');
+    box.setAttribute('color', '#4CC3D9');
+    box.setAttribute('depth', '0.05');
+    box.setAttribute('width', '0.3');
+    box.setAttribute('height', '0.3');
+    box.setAttribute('position', pos[i]);
+    addHoverEffect(box, '#4CC3D9', '#66CCFF');
+    const num = i + 1;
+    const label = document.createElement('a-text');
+    label.setAttribute('value', num);
+    label.setAttribute('align', 'center');
+    label.setAttribute('position', '0 0 0.03');
+    label.setAttribute('color', '#000');
+    label.setAttribute('width', '4');
+    box.appendChild(label);
+    box.addEventListener('click', () => {
+      if (inputPIN.length < 4) {
+        inputPIN += num;
+        status.setAttribute('value', 'PIN: ' + inputPIN);
+        if (isDynamic) shuffleAndRearrange();
+      }
+    });
+    pinpad.appendChild(box);
+    buttons.push(box);
+  }
+}
+
+function shuffleAndRearrange() {
+  let shuffled = shuffleArray(positions.slice());
+  buttons.forEach((btn, idx) => btn.setAttribute('position', shuffled[idx]));
+}
+
+function showPopup(elapsed) {
+  pinpadSection.setAttribute('visible', false);
+  confirmPopup.setAttribute('visible', true);
+  document.getElementById('popupMode').setAttribute('value', `Mode: ${isDynamic ? 'Dynamic' : 'Fixed'}`);
+  document.getElementById('popupTime').setAttribute('value', `Time: ${elapsed} ms`);
+}
+
+function closePopup() {
+  confirmPopup.setAttribute('visible', false);
+  mainTitle.setAttribute('visible', true);
+  modeSel.setAttribute('visible', true);
+}
+
+function shuffleArray(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+function addHoverEffect(box, normal, hover) {
+  box.addEventListener('mouseenter', () => box.setAttribute('color', hover));
+  box.addEventListener('mouseleave', () => box.setAttribute('color', normal));
+}
+</script>
+</body>
+</html>
